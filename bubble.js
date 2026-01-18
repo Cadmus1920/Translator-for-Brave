@@ -2,9 +2,17 @@
   if (window.showTranslatorBubble) return;
 
   const STORAGE_KEY = "translatorBubbleSettings";
+
+  const SAFE_TOP = 40;      // prevents hiding under bookmarks bar
+  const SAFE_MARGIN = 10;
+
   const MIN_FONT = 12;
   const MAX_FONT = 20;
-  const STEP = 2;
+  const FONT_STEP = 2;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(value, max));
+  }
 
   function loadSettings() {
     return new Promise(resolve => {
@@ -22,7 +30,7 @@
     let box = document.getElementById("translator-bubble");
     let settings = await loadSettings();
 
-    // Reuse existing bubble
+    // Reuse existing bubble safely
     if (box) {
       const content = box.querySelector("#tb-content");
       if (content) content.textContent = text;
@@ -83,12 +91,28 @@
       content.style.fontSize = fontSize + "px";
     }
 
+    // Clamp saved position on load (PERMANENT FIX)
+    const startWidth = settings.width || 320;
+    const startHeight = settings.height || 180;
+
+    const startLeft = clamp(
+      settings.left ?? 80,
+      SAFE_MARGIN,
+      window.innerWidth - startWidth - SAFE_MARGIN
+    );
+
+    const startTop = clamp(
+      settings.top ?? 80,
+      SAFE_TOP,
+      window.innerHeight - startHeight - SAFE_MARGIN
+    );
+
     Object.assign(box.style, {
       position: "fixed",
-      top: (settings.top || 80) + "px",
-      left: (settings.left || 80) + "px",
-      width: (settings.width || 320) + "px",
-      height: (settings.height || 180) + "px",
+      top: startTop + "px",
+      left: startLeft + "px",
+      width: startWidth + "px",
+      height: startHeight + "px",
       borderRadius: "10px",
       boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
       zIndex: "999999",
@@ -130,7 +154,7 @@
     // Buttons
     fontPlusBtn.onclick = () => {
       if (fontSize < MAX_FONT) {
-        fontSize += STEP;
+        fontSize += FONT_STEP;
         settings.fontSize = fontSize;
         saveSettings(settings);
         applyFontSize();
@@ -139,7 +163,7 @@
 
     fontMinusBtn.onclick = () => {
       if (fontSize > MIN_FONT) {
-        fontSize -= STEP;
+        fontSize -= FONT_STEP;
         settings.fontSize = fontSize;
         saveSettings(settings);
         applyFontSize();
@@ -153,7 +177,7 @@
     copyBtn.onclick = () => {
       navigator.clipboard.writeText(content.textContent);
       copyBtn.textContent = "✔";
-      setTimeout(() => copyBtn.textContent = "📋", 800);
+      setTimeout(() => (copyBtn.textContent = "📋"), 800);
     };
 
     themeBtn.onclick = () => {
@@ -165,7 +189,7 @@
 
     closeBtn.onclick = () => box.remove();
 
-    // Dragging
+    // Dragging (clamped)
     let dx = 0, dy = 0, drag = false;
 
     header.addEventListener("mousedown", e => {
@@ -176,8 +200,20 @@
 
     document.addEventListener("mousemove", e => {
       if (!drag) return;
-      box.style.left = (e.clientX - dx) + "px";
-      box.style.top = (e.clientY - dy) + "px";
+
+      const maxLeft =
+        window.innerWidth - box.offsetWidth - SAFE_MARGIN;
+      const maxTop =
+        window.innerHeight - box.offsetHeight - SAFE_MARGIN;
+
+      let newLeft = e.clientX - dx;
+      let newTop = e.clientY - dy;
+
+      newLeft = clamp(newLeft, SAFE_MARGIN, maxLeft);
+      newTop = clamp(newTop, SAFE_TOP, maxTop);
+
+      box.style.left = newLeft + "px";
+      box.style.top = newTop + "px";
     });
 
     document.addEventListener("mouseup", () => {
