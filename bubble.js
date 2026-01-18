@@ -1,205 +1,190 @@
 (() => {
-  // Always replace old versions (MV3-safe)
-delete window.showTranslatorBubble;
-  let extensionAlive = true;
-
-  window.addEventListener("unload", () => {
-    extensionAlive = false;
-  });
-
+  /* --------------------------------------------------------------
+   *  Constants (formerly in constants.js)
+   * -------------------------------------------------------------- */
   const STORAGE_KEY = "translatorBubbleSettings";
 
-  const SAFE_TOP = 40;      // prevents hiding under bookmarks bar
-  const SAFE_MARGIN = 10;
-  const SNAP_DISTANCE = 24; // px
+  const UI_DEFAULTS = {
+    theme: "dark",
+    fontSize: 14,
+    width: 320,
+    height: 180,
+    left: 80,
+    top: 80,
+    safeMargin: 10,   // margin from screen edges
+    safeTop: 40,      // keep bubble below the bookmarks bar
+    snapDistance: 24, // distance (px) at which the bubble snaps to an edge
+    minFont: 12,
+    maxFont: 20,
+    fontStep: 2
+  };
 
-  const MIN_FONT = 12;
-  const MAX_FONT = 20;
-  const FONT_STEP = 2;
-
+  /* --------------------------------------------------------------
+   *  Utility helpers (formerly in ui-utils.js)
+   * -------------------------------------------------------------- */
   function clamp(value, min, max) {
     return Math.max(min, Math.min(value, max));
   }
-function snapToEdges(box) {
-  const leftPos = box.offsetLeft;
-  const topPos = box.offsetTop;
-  const width = box.offsetWidth;
-  const height = box.offsetHeight;
 
-  let left = leftPos;
-  let top = topPos;
+  /**
+   * Snap a bubble element to the nearest screen edge.
+   * Returns the final `{ left, top }` coordinates.
+   */
+  function snapToEdges(box, { safeMargin, safeTop, snapDistance }) {
+    const leftPos = box.offsetLeft;
+    const topPos = box.offsetTop;
+    const width = box.offsetWidth;
+    const height = box.offsetHeight;
 
-  // Left edge
-  if (leftPos < SNAP_DISTANCE) {
-    left = SAFE_MARGIN;
-  }
+    let left = leftPos;
+    let top = topPos;
 
-  // Right edge
-  if (window.innerWidth - (leftPos + width) < SNAP_DISTANCE) {
-    left = window.innerWidth - width - SAFE_MARGIN;
-  }
+    // Left edge
+    if (leftPos < snapDistance) left = safeMargin;
 
-  // Top edge
-  if (topPos - SAFE_TOP < SNAP_DISTANCE) {
-    top = SAFE_TOP;
-  }
-
-  // Bottom edge
-  if (window.innerHeight - (topPos + height) < SNAP_DISTANCE) {
-    top = window.innerHeight - height - SAFE_MARGIN;
-  }
-
-  box.style.left = left + "px";
-  box.style.top = top + "px";
-}
-
-
-function loadSettings() {
-  return new Promise(resolve => {
-    if (!extensionAlive) {
-      resolve({});
-      return;
+    // Right edge
+    if (window.innerWidth - (leftPos + width) < snapDistance) {
+      left = window.innerWidth - width - safeMargin;
     }
 
-    try {
+    // Top edge
+    if (topPos - safeTop < snapDistance) top = safeTop;
+
+    // Bottom edge
+    if (window.innerHeight - (topPos + height) < snapDistance) {
+      top = window.innerHeight - height - safeMargin;
+    }
+
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    return { left, top };
+  }
+
+  /**
+   * Apply dark / light theme to the bubble.
+   */
+  function applyTheme(el, theme) {
+    const isDark = theme === "dark";
+    const bg = isDark ? "#0f1115" : "#f2f2f2";
+    const fg = isDark ? "#fff" : "#000";
+    const headerBg = isDark ? "#161a22" : "#e4e4e4";
+    const border = isDark ? "1px solid #333" : "1px solid #bbb";
+
+    Object.assign(el.style, { background: bg, color: fg, border });
+    const header = el.querySelector("#tb-header");
+    if (header) header.style.background = headerBg;
+    return { bg, fg, headerBg, border };
+  }
+
+  /**
+   * Set the content font size.
+   */
+  function applyFontSize(contentEl, size) {
+    contentEl.style.fontSize = `${size}px`;
+  }
+
+  /* --------------------------------------------------------------
+   *  Messaging helpers (talk to background for settings)
+   * -------------------------------------------------------------- */
+  function loadSettings() {
+    return new Promise(resolve => {
       chrome.runtime.sendMessage({ type: "getSettings" }, res => {
         resolve(res || {});
       });
-    } catch {
-      resolve({});
-    }
-  });
-}
-
-
-
-function saveSettings(settings) {
-  if (!extensionAlive) return;
-
-  try {
-    chrome.runtime.sendMessage(
-      { type: "saveSettings", data: settings },
-      () => {
-        // ignore lastError
-      }
-    );
-  } catch {
-    // ignore invalidation
+    });
   }
-}
 
+  function saveSettings(settings) {
+    chrome.runtime.sendMessage({ type: "saveSettings", data: settings });
+  }
+
+  /* --------------------------------------------------------------
+   *  Main UI function – exposed globally as window.showTranslatorBubble
+   * -------------------------------------------------------------- */
   window.showTranslatorBubble = async (text) => {
-    let box = document.getElementById("translator-bubble");
-    let settings = await loadSettings();
+    // -----------------------------------------------------------------
+    // 1️⃣ Re‑use existing bubble if it already exists
+    // -----------------------------------------------------------------
+    let bubble = document.getElementById("translator-bubble");
+    const stored = await loadSettings();
 
-    // Reuse existing bubble safely
-    if (box) {
-      const content = box.querySelector("#tb-content");
+    if (bubble) {
+      const content = bubble.querySelector("#tb-content");
       if (content) content.textContent = text;
       return;
     }
 
-    // Create bubble
-    box = document.createElement("div");
-    box.id = "translator-bubble";
+    // -----------------------------------------------------------------
+    // 2️⃣ Create the bubble DOM
+    // -----------------------------------------------------------------
+    bubble = document.createElement("div");
+    bubble.id = "translator-bubble";
+    bubble.setAttribute("role", "dialog");           // accessibility
+    bubble.setAttribute("aria-modal", "true");
+    bubble.setAttribute("aria-label", "Translation result");
 
-    box.innerHTML = `
+    bubble.innerHTML = `
       <div id="tb-header">
-        <span>Translator</span>
+        <span id="tb-title">Translator</span>
         <div id="tb-buttons">
-          <span id="tb-font-minus">A−</span>
-          <span id="tb-font-plus">A+</span>
-          <span id="tb-clear">🧹</span>
-          <span id="tb-theme">🌗</span>
-          <span id="tb-copy">📋</span>         
-          <span id="tb-close">✕</span>
+          <button id="tb-font-minus" aria-label="Decrease font size">A−</button>
+          <button id="tb-font-plus" aria-label="Increase font size">A+</button>
+          <button id="tb-clear" aria-label="Clear text">🧹</button>
+          <button id="tb-theme" aria-label="Toggle dark/light theme">🌗</button>
+          <button id="tb-copy" aria-label="Copy to clipboard">📋</button>
+          <button id="tb-close" aria-label="Close dialog">✕</button>
         </div>
       </div>
-      <div id="tb-content"></div>
-      <div id="tb-resize"></div>
+      <div id="tb-content" tabindex="0"></div>
+      <div id="tb-resize" aria-hidden="true"></div>
     `;
 
-    document.body.appendChild(box);
+    document.body.appendChild(bubble);
 
-    const header = box.querySelector("#tb-header");
-    const content = box.querySelector("#tb-content");
-    const resizer = box.querySelector("#tb-resize");
+    // -----------------------------------------------------------------
+    // 3️⃣ Grab references to frequently used elements
+    // -----------------------------------------------------------------
+    const header   = bubble.querySelector("#tb-header");
+    const content  = bubble.querySelector("#tb-content");
+    const resizer  = bubble.querySelector("#tb-resize");
 
-    const fontMinusBtn = box.querySelector("#tb-font-minus");
-    const fontPlusBtn = box.querySelector("#tb-font-plus");
-    const clearBtn = box.querySelector("#tb-clear");
-    const copyBtn = box.querySelector("#tb-copy");
-    const themeBtn = box.querySelector("#tb-theme");
-    const closeBtn = box.querySelector("#tb-close");
+    const btnMinus = bubble.querySelector("#tb-font-minus");
+    const btnPlus  = bubble.querySelector("#tb-font-plus");
+    const btnClear = bubble.querySelector("#tb-clear");
+    const btnCopy  = bubble.querySelector("#tb-copy");
+    const btnTheme = bubble.querySelector("#tb-theme");
+    const btnClose = bubble.querySelector("#tb-close");
 
-// Secondary (less-used) buttons
-const secondaryButtons = [
-  fontMinusBtn,
-  fontPlusBtn,
-  clearBtn,
-  themeBtn
-];
+    // -----------------------------------------------------------------
+    // 4️⃣ State (theme, font size, geometry)
+    // -----------------------------------------------------------------
+    let theme    = stored.theme   || UI_DEFAULTS.theme;
+    let fontSize = stored.fontSize|| UI_DEFAULTS.fontSize;
 
-secondaryButtons.forEach(btn => {
-  btn.style.display = "none";
-});
+    const startW = stored.width  || UI_DEFAULTS.width;
+    const startH = stored.height || UI_DEFAULTS.height;
 
-
-// Button cursors (click targets)
-[
-  fontMinusBtn,
-  fontPlusBtn,
-  clearBtn,
-  copyBtn,
-  themeBtn,
-  closeBtn
-].forEach(btn => {
-  btn.style.cursor = "pointer";
-});
-
-    let theme = settings.theme || "dark";
-    let fontSize = settings.fontSize || 14;
-
-    function applyTheme() {
-      if (theme === "dark") {
-        box.style.background = "#0f1115";
-        box.style.color = "#fff";
-        header.style.background = "#161a22";
-        box.style.border = "1px solid #333";
-      } else {
-        box.style.background = "#f2f2f2";
-        box.style.color = "#000";
-        header.style.background = "#e4e4e4";
-        box.style.border = "1px solid #bbb";
-      }
-    }
-
-    function applyFontSize() {
-      content.style.fontSize = fontSize + "px";
-    }
-
-    // Clamp saved position on load (PERMANENT FIX)
-    const startWidth = settings.width || 320;
-    const startHeight = settings.height || 180;
-
-    const startLeft = clamp(
-      settings.left ?? 80,
-      SAFE_MARGIN,
-      window.innerWidth - startWidth - SAFE_MARGIN
+    const startL = clamp(
+      stored.left ?? UI_DEFAULTS.left,
+      UI_DEFAULTS.safeMargin,
+      window.innerWidth - startW - UI_DEFAULTS.safeMargin
     );
 
-    const startTop = clamp(
-      settings.top ?? 80,
-      SAFE_TOP,
-      window.innerHeight - startHeight - SAFE_MARGIN
+    const startT = clamp(
+      stored.top ?? UI_DEFAULTS.top,
+      UI_DEFAULTS.safeTop,
+      window.innerHeight - startH - UI_DEFAULTS.safeMargin
     );
 
-    Object.assign(box.style, {
+    // -----------------------------------------------------------------
+    // 5️⃣ Apply initial CSS
+    // -----------------------------------------------------------------
+    Object.assign(bubble.style, {
       position: "fixed",
-      top: startTop + "px",
-      left: startLeft + "px",
-      width: startWidth + "px",
-      height: startHeight + "px",
+      top: `${startT}px`,
+      left: `${startL}px`,
+      width: `${startW}px`,
+      height: `${startH}px`,
       borderRadius: "10px",
       boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
       zIndex: "999999",
@@ -235,128 +220,150 @@ secondaryButtons.forEach(btn => {
       cursor: "nwse-resize"
     });
 
-    applyTheme();
-    applyFontSize();
+    // -----------------------------------------------------------------
+    // 6️⃣ Theme & font helpers
+    // -----------------------------------------------------------------
+    const refreshTheme = () => applyTheme(bubble, theme);
+    const refreshFont  = () => applyFontSize(content, fontSize);
+    refreshTheme();
+    refreshFont();
 
-    // Buttons
-    fontPlusBtn.onclick = () => {
-      if (fontSize < MAX_FONT) {
-        fontSize += FONT_STEP;
-        settings.fontSize = fontSize;
-        saveSettings(settings);
-        applyFontSize();
+    // -----------------------------------------------------------------
+    // 7️⃣ Button actions
+    // -----------------------------------------------------------------
+    btnPlus.onclick = () => {
+      if (fontSize < UI_DEFAULTS.maxFont) {
+        fontSize += UI_DEFAULTS.fontStep;
+        refreshFont();
+        saveSettings({ ...stored, fontSize });
       }
     };
 
-    fontMinusBtn.onclick = () => {
-      if (fontSize > MIN_FONT) {
-        fontSize -= FONT_STEP;
-        settings.fontSize = fontSize;
-        saveSettings(settings);
-        applyFontSize();
+    btnMinus.onclick = () => {
+      if (fontSize > UI_DEFAULTS.minFont) {
+        fontSize -= UI_DEFAULTS.fontStep;
+        refreshFont();
+        saveSettings({ ...stored, fontSize });
       }
     };
 
-    clearBtn.onclick = () => {
-      content.textContent = "";
+    btnClear.onclick = () => (content.textContent = "");
+
+    btnCopy.onclick = async () => {
+      await navigator.clipboard.writeText(content.textContent);
+      const original = btnCopy.textContent;
+      btnCopy.textContent = "✔";
+      setTimeout(() => (btnCopy.textContent = original), 800);
     };
 
-    copyBtn.onclick = () => {
-      navigator.clipboard.writeText(content.textContent);
-      copyBtn.textContent = "✔";
-      setTimeout(() => (copyBtn.textContent = "📋"), 800);
-    };
-
-    themeBtn.onclick = () => {
+    btnTheme.onclick = () => {
       theme = theme === "dark" ? "light" : "dark";
-      settings.theme = theme;
-      saveSettings(settings);
-      applyTheme();
+      refreshTheme();
+      saveSettings({ ...stored, theme });
     };
 
-    closeBtn.onclick = () => box.remove();
+    btnClose.onclick = () => bubble.remove();
 
-    // Dragging (clamped)
-    let dx = 0, dy = 0, drag = false;
+    // Allow Esc key to close the bubble
+    bubble.addEventListener("keydown", e => {
+      if (e.key === "Escape") bubble.remove();
+    });
+
+    // -----------------------------------------------------------------
+    // 8️⃣ Dragging (with clamping)
+    // -----------------------------------------------------------------
+    let dragging = false,
+        dragOffsetX = 0,
+        dragOffsetY = 0;
 
     header.addEventListener("mousedown", e => {
-      drag = true;
-      dx = e.clientX - box.offsetLeft;
-      dy = e.clientY - box.offsetTop;
+      dragging = true;
+      dragOffsetX = e.clientX - bubble.offsetLeft;
+      dragOffsetY = e.clientY - bubble.offsetTop;
     });
 
     document.addEventListener("mousemove", e => {
-      if (!drag) return;
+      if (!dragging) return;
 
-      const maxLeft =
-        window.innerWidth - box.offsetWidth - SAFE_MARGIN;
-      const maxTop =
-        window.innerHeight - box.offsetHeight - SAFE_MARGIN;
+      const maxLeft = window.innerWidth - bubble.offsetWidth - UI_DEFAULTS.safeMargin;
+      const maxTop  = window.innerHeight - bubble.offsetHeight - UI_DEFAULTS.safeMargin;
 
-      let newLeft = e.clientX - dx;
-      let newTop = e.clientY - dy;
+      let newLeft = e.clientX - dragOffsetX;
+      let newTop  = e.clientY - dragOffsetY;
 
-      newLeft = clamp(newLeft, SAFE_MARGIN, maxLeft);
-      newTop = clamp(newTop, SAFE_TOP, maxTop);
+      newLeft = clamp(newLeft, UI_DEFAULTS.safeMargin, maxLeft);
+      newTop  = clamp(newTop, UI_DEFAULTS.safeTop, maxTop);
 
-      box.style.left = newLeft + "px";
-      box.style.top = newTop + "px";
-    });
-
-document.addEventListener("mouseup", () => {
-  if (!drag) return;
-  drag = false;
-console.log("Drag ended, snapping");
-
-  snapToEdges(box);
-
-  settings.left = box.offsetLeft;
-  settings.top = box.offsetTop;
-  saveSettings(settings);
-});
-
-
-// Bubble hover behavior (reveal secondary buttons)
-box.addEventListener("mouseenter", () => {
-  secondaryButtons.forEach(btn => {
-    btn.style.display = "inline-flex";
-  });
-});
-
-box.addEventListener("mouseleave", () => {
-  secondaryButtons.forEach(btn => {
-    btn.style.display = "none";
-  });
-});
-
-
-
-    // Resizing
-    let resize = false, sx, sy, sw, sh;
-
-    resizer.addEventListener("mousedown", e => {
-      resize = true;
-      sx = e.clientX;
-      sy = e.clientY;
-      sw = box.offsetWidth;
-      sh = box.offsetHeight;
-      e.preventDefault();
-    });
-
-    document.addEventListener("mousemove", e => {
-      if (!resize) return;
-      box.style.width = sw + (e.clientX - sx) + "px";
-      box.style.height = sh + (e.clientY - sy) + "px";
+      bubble.style.left = `${newLeft}px`;
+      bubble.style.top  = `${newTop}px`;
     });
 
     document.addEventListener("mouseup", () => {
-      if (!resize) return;
-      resize = false;
-      settings.width = box.offsetWidth;
-      settings.height = box.offsetHeight;
-      saveSettings(settings);
+      if (!dragging) return;
+      dragging = false;
+
+      // Snap to nearest edge and persist position
+      const { left, top } = snapToEdges(bubble, {
+        safeMargin: UI_DEFAULTS.safeMargin,
+        safeTop: UI_DEFAULTS.safeTop,
+        snapDistance: UI_DEFAULTS.snapDistance
+      });
+      saveSettings({ ...stored, left, top });
     });
 
+    // -----------------------------------------------------------------
+    // 9️⃣ Hover‑reveal secondary buttons (font +/- , clear, theme)
+    // -----------------------------------------------------------------
+    const secondaryButtons = [btnMinus, btnPlus, btnClear, btnTheme];
+
+    // Start hidden but still focusable via Tab
+    secondaryButtons.forEach(b => (b.style.display = "none"));
+
+    bubble.addEventListener("mouseenter", () => {
+      secondaryButtons.forEach(b => (b.style.display = "inline"));
+    });
+    bubble.addEventListener("mouseleave", () => {
+      secondaryButtons.forEach(b => (b.style.display = "none"));
+    });
+
+    // -----------------------------------------------------------------
+    // 🔟 Resizing
+    // -----------------------------------------------------------------
+    let resizing = false,
+        resizeStartX, resizeStartY,
+        resizeStartW, resizeStartH;   // <-- renamed variables
+
+    resizer.addEventListener("mousedown", e => {
+      resizing = true;
+      resizeStartX = e.clientX;
+      resizeStartY = e.clientY;
+      resizeStartW = bubble.offsetWidth;
+      resizeStartH = bubble.offsetHeight;
+      e.preventDefault(); // stop text selection
+    });
+
+    document.addEventListener("mousemove", e => {
+      if (!resizing) return;
+      const newW = Math.max(200, resizeStartW + e.clientX - resizeStartX);
+      const newH = Math.max(100, resizeStartH + e.clientY - resizeStartY);
+      bubble.style.width = `${newW}px`;
+      bubble.style.height = `${newH}px`;
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (!resizing) return;
+      resizing = false;
+      saveSettings({
+        ...stored,
+        width: bubble.offsetWidth,
+        height: bubble.offsetHeight
+      });
+    });
+
+    // -----------------------------------------------------------------
+    // 11️⃣ Populate the translation text
+    // -----------------------------------------------------------------
     content.textContent = text;
+    content.focus(); // give screen‑readers a cue that content changed
   };
 })();

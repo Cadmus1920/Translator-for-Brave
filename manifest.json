@@ -6,6 +6,12 @@
   "permissions": ["contextMenus", "activeTab", "scripting", "storage"],
   "host_permissions": ["https://translate.googleapis.com/*"],
   "background": {
-    "service_worker": "background.js"
-  }
+    "service_worker": "background.js",
+    "type": "module"            // <-- enable ES6 modules
+  },
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {}
 }
