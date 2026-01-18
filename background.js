@@ -1,5 +1,6 @@
-// ----- background.js -----
-import { STORAGE_KEY } from "./constants.js";
+// ----- background.js (service worker) -----
+/* No import of constants – we define the key locally */
+const STORAGE_KEY = "translatorBubbleSettings";
 
 /* ---------- Message Handlers ---------- */
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -41,7 +42,7 @@ async function translateText(text, targetLang) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
   // data[0] is an array of translation fragments
-  return data[0].map((item) => item[0]).join("");
+  return data[0].map(item => item[0]).join("");
 }
 
 /* ---------- Context‑Menu Click Handler ---------- */
@@ -56,15 +57,28 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const translated = await translateText(raw, targetLang);
 
-    // Inject bubble script and then call the UI function
+    // 1️⃣ inject constants (exposes STORAGE_KEY & UI_DEFAULTS)
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["constants.js"]
+    });
+
+    // 2️⃣ inject UI helpers
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["ui-utils.js"]
+    });
+
+    // 3️⃣ finally inject the bubble UI (which now reads the globals)
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["bubble.js"]
     });
 
+    // Call the UI function that bubble.js defined on the page
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: (t) => window.showTranslatorBubble(t),
+      func: t => window.showTranslatorBubble(t),
       args: [translated]
     });
   } catch (err) {
