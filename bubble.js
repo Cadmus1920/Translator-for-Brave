@@ -70,6 +70,18 @@
     const themeBtn = box.querySelector("#tb-theme");
     const closeBtn = box.querySelector("#tb-close");
 
+// Button cursors (click targets)
+[
+  fontMinusBtn,
+  fontPlusBtn,
+  clearBtn,
+  copyBtn,
+  themeBtn,
+  closeBtn
+].forEach(btn => {
+  btn.style.cursor = "pointer";
+});
+
     let theme = settings.theme || "dark";
     let fontSize = settings.fontSize || 14;
 
@@ -123,7 +135,7 @@
 
     Object.assign(header.style, {
       padding: "8px 10px",
-      cursor: "move",
+      cursor: "default",
       fontWeight: "600",
       display: "flex",
       justifyContent: "space-between",
@@ -223,6 +235,15 @@
       settings.top = box.offsetTop;
       saveSettings(settings);
     });
+
+// Header cursor behavior (only show move cursor on drag area)
+header.addEventListener("mouseenter", () => {
+  header.style.cursor = "move";
+});
+
+header.addEventListener("mouseleave", () => {
+  header.style.cursor = "default";
+});
 
     // Resizing
     let resize = false, sx, sy, sw, sh;
