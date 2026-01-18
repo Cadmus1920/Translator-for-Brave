@@ -48,8 +48,8 @@
           <span id="tb-font-minus">A−</span>
           <span id="tb-font-plus">A+</span>
           <span id="tb-clear">🧹</span>
-          <span id="tb-copy">📋</span>
           <span id="tb-theme">🌗</span>
+          <span id="tb-copy">📋</span>         
           <span id="tb-close">✕</span>
         </div>
       </div>
@@ -69,6 +69,19 @@
     const copyBtn = box.querySelector("#tb-copy");
     const themeBtn = box.querySelector("#tb-theme");
     const closeBtn = box.querySelector("#tb-close");
+
+// Secondary (less-used) buttons
+const secondaryButtons = [
+  fontMinusBtn,
+  fontPlusBtn,
+  clearBtn,
+  themeBtn
+];
+
+secondaryButtons.forEach(btn => {
+  btn.style.display = "none";
+});
+
 
 // Button cursors (click targets)
 [
@@ -236,14 +249,21 @@
       saveSettings(settings);
     });
 
-// Header cursor behavior (only show move cursor on drag area)
-header.addEventListener("mouseenter", () => {
-  header.style.cursor = "move";
+
+// Bubble hover behavior (reveal secondary buttons)
+box.addEventListener("mouseenter", () => {
+  secondaryButtons.forEach(btn => {
+    btn.style.display = "inline-flex";
+  });
 });
 
-header.addEventListener("mouseleave", () => {
-  header.style.cursor = "default";
+box.addEventListener("mouseleave", () => {
+  secondaryButtons.forEach(btn => {
+    btn.style.display = "none";
+  });
 });
+
+
 
     // Resizing
     let resize = false, sx, sy, sw, sh;
