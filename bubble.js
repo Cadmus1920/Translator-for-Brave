@@ -2,6 +2,9 @@
   if (window.showTranslatorBubble) return;
 
   const STORAGE_KEY = "translatorBubbleSettings";
+  const MIN_FONT = 12;
+  const MAX_FONT = 20;
+  const STEP = 2;
 
   function loadSettings() {
     return new Promise(resolve => {
@@ -19,14 +22,14 @@
     let box = document.getElementById("translator-bubble");
     let settings = await loadSettings();
 
-    // ✅ If bubble already exists, just update content
+    // Reuse existing bubble
     if (box) {
       const content = box.querySelector("#tb-content");
       if (content) content.textContent = text;
       return;
     }
 
-    // 🆕 Create bubble ONCE
+    // Create bubble
     box = document.createElement("div");
     box.id = "translator-bubble";
 
@@ -34,6 +37,8 @@
       <div id="tb-header">
         <span>Translator</span>
         <div id="tb-buttons">
+          <span id="tb-font-minus">A−</span>
+          <span id="tb-font-plus">A+</span>
           <span id="tb-clear">🧹</span>
           <span id="tb-copy">📋</span>
           <span id="tb-theme">🌗</span>
@@ -49,12 +54,16 @@
     const header = box.querySelector("#tb-header");
     const content = box.querySelector("#tb-content");
     const resizer = box.querySelector("#tb-resize");
+
+    const fontMinusBtn = box.querySelector("#tb-font-minus");
+    const fontPlusBtn = box.querySelector("#tb-font-plus");
     const clearBtn = box.querySelector("#tb-clear");
     const copyBtn = box.querySelector("#tb-copy");
     const themeBtn = box.querySelector("#tb-theme");
     const closeBtn = box.querySelector("#tb-close");
 
     let theme = settings.theme || "dark";
+    let fontSize = settings.fontSize || 14;
 
     function applyTheme() {
       if (theme === "dark") {
@@ -68,6 +77,10 @@
         header.style.background = "#e4e4e4";
         box.style.border = "1px solid #bbb";
       }
+    }
+
+    function applyFontSize() {
+      content.style.fontSize = fontSize + "px";
     }
 
     Object.assign(box.style, {
@@ -98,7 +111,6 @@
       padding: "10px",
       overflow: "auto",
       flex: "1",
-      fontSize: "14px",
       lineHeight: "1.4",
       whiteSpace: "pre-wrap"
     });
@@ -113,8 +125,27 @@
     });
 
     applyTheme();
+    applyFontSize();
 
     // Buttons
+    fontPlusBtn.onclick = () => {
+      if (fontSize < MAX_FONT) {
+        fontSize += STEP;
+        settings.fontSize = fontSize;
+        saveSettings(settings);
+        applyFontSize();
+      }
+    };
+
+    fontMinusBtn.onclick = () => {
+      if (fontSize > MIN_FONT) {
+        fontSize -= STEP;
+        settings.fontSize = fontSize;
+        saveSettings(settings);
+        applyFontSize();
+      }
+    };
+
     clearBtn.onclick = () => {
       content.textContent = "";
     };
@@ -183,7 +214,6 @@
       saveSettings(settings);
     });
 
-    // Initial content
     content.textContent = text;
   };
 })();
