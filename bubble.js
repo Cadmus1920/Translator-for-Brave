@@ -1,87 +1,12 @@
 (() => {
-  /* --------------------------------------------------------------
-   *  Constants (formerly in constants.js)
-   * -------------------------------------------------------------- */
-  const STORAGE_KEY = "translatorBubbleSettings";
+  // --------------------------------------------------------------
+  //  The constants and helpers are injected **before** this script
+  //  (see background.js). They are attached to `window`, so we can
+  //  read them directly without using ES‑module imports.
+  // --------------------------------------------------------------
 
-  const UI_DEFAULTS = {
-    theme: "dark",
-    fontSize: 14,
-    width: 320,
-    height: 180,
-    left: 80,
-    top: 80,
-    safeMargin: 10,   // margin from screen edges
-    safeTop: 40,      // keep bubble below the bookmarks bar
-    snapDistance: 24, // distance (px) at which the bubble snaps to an edge
-    minFont: 12,
-    maxFont: 20,
-    fontStep: 2
-  };
-
-  /* --------------------------------------------------------------
-   *  Utility helpers (formerly in ui-utils.js)
-   * -------------------------------------------------------------- */
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(value, max));
-  }
-
-  /**
-   * Snap a bubble element to the nearest screen edge.
-   * Returns the final `{ left, top }` coordinates.
-   */
-  function snapToEdges(box, { safeMargin, safeTop, snapDistance }) {
-    const leftPos = box.offsetLeft;
-    const topPos = box.offsetTop;
-    const width = box.offsetWidth;
-    const height = box.offsetHeight;
-
-    let left = leftPos;
-    let top = topPos;
-
-    // Left edge
-    if (leftPos < snapDistance) left = safeMargin;
-
-    // Right edge
-    if (window.innerWidth - (leftPos + width) < snapDistance) {
-      left = window.innerWidth - width - safeMargin;
-    }
-
-    // Top edge
-    if (topPos - safeTop < snapDistance) top = safeTop;
-
-    // Bottom edge
-    if (window.innerHeight - (topPos + height) < snapDistance) {
-      top = window.innerHeight - height - safeMargin;
-    }
-
-    box.style.left = `${left}px`;
-    box.style.top = `${top}px`;
-    return { left, top };
-  }
-
-  /**
-   * Apply dark / light theme to the bubble.
-   */
-  function applyTheme(el, theme) {
-    const isDark = theme === "dark";
-    const bg = isDark ? "#0f1115" : "#f2f2f2";
-    const fg = isDark ? "#fff" : "#000";
-    const headerBg = isDark ? "#161a22" : "#e4e4e4";
-    const border = isDark ? "1px solid #333" : "1px solid #bbb";
-
-    Object.assign(el.style, { background: bg, color: fg, border });
-    const header = el.querySelector("#tb-header");
-    if (header) header.style.background = headerBg;
-    return { bg, fg, headerBg, border };
-  }
-
-  /**
-   * Set the content font size.
-   */
-  function applyFontSize(contentEl, size) {
-    contentEl.style.fontSize = `${size}px`;
-  }
+  const { STORAGE_KEY, UI_DEFAULTS } = window;
+  const { clamp, snapToEdges, applyTheme, applyFontSize } = window;
 
   /* --------------------------------------------------------------
    *  Messaging helpers (talk to background for settings)
@@ -119,7 +44,7 @@
     // -----------------------------------------------------------------
     bubble = document.createElement("div");
     bubble.id = "translator-bubble";
-    bubble.setAttribute("role", "dialog");           // accessibility
+    bubble.setAttribute("role", "dialog");
     bubble.setAttribute("aria-modal", "true");
     bubble.setAttribute("aria-label", "Translation result");
 
@@ -128,9 +53,10 @@
         <span id="tb-title">Translator</span>
         <div id="tb-buttons">
           <button id="tb-font-minus" aria-label="Decrease font size">A−</button>
-          <button id="tb-font-plus" aria-label="Increase font size">A+</button>
-          <button id="tb-clear" aria-label="Clear text">🧹</button>
+          <button id="tb-font-plus" aria-label="Increase font size">A+</button>  
+	  <button id="tb-clear" aria-label="Clear text">🧹</button>
           <button id="tb-theme" aria-label="Toggle dark/light theme">🌗</button>
+          <button id="tb-fullscreen" aria-label="Toggle full‑screen">⛶</button>          
           <button id="tb-copy" aria-label="Copy to clipboard">📋</button>
           <button id="tb-close" aria-label="Close dialog">✕</button>
         </div>
@@ -154,13 +80,14 @@
     const btnCopy  = bubble.querySelector("#tb-copy");
     const btnTheme = bubble.querySelector("#tb-theme");
     const btnClose = bubble.querySelector("#tb-close");
-
+    const btnFull = bubble.querySelector("#tb-fullscreen");
     // -----------------------------------------------------------------
     // 4️⃣ State (theme, font size, geometry)
     // -----------------------------------------------------------------
     let theme    = stored.theme   || UI_DEFAULTS.theme;
     let fontSize = stored.fontSize|| UI_DEFAULTS.fontSize;
-
+    let prevGeometry = null; // will hold {width, height, left, top}
+    let isFullScreen = false;
     const startW = stored.width  || UI_DEFAULTS.width;
     const startH = stored.height || UI_DEFAULTS.height;
 
@@ -261,13 +188,68 @@
       refreshTheme();
       saveSettings({ ...stored, theme });
     };
+// -------------------- Full‑screen toggle --------------------
+btnFull.onclick = () => {
+  if (!isFullScreen) {
+    // Save current geometry so we can restore it later
+    prevGeometry = {
+      width: bubble.offsetWidth,
+      height: bubble.offsetHeight,
+      left: bubble.offsetLeft,
+      top: bubble.offsetTop
+    };
 
+    // Apply full‑screen style
+    Object.assign(bubble.style, {
+      top: "0",
+      left: "0",
+      width: "100vw",
+      height: "100vh",
+      borderRadius: "0",
+      maxWidth: "none",
+      maxHeight: "none",
+      zIndex: "2147483647"   // bring it above everything
+    });
+
+    // Optional: hide the resize handle while full‑screen
+    resizer.style.display = "none";
+
+    isFullScreen = true;
+  } else {
+    // Restore previous geometry
+    const { width, height, left, top } = prevGeometry;
+    Object.assign(bubble.style, {
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+      borderRadius: "10px"
+    });
+
+    // Show the resize handle again
+    resizer.style.display = "";
+    isFullScreen = false;
+  }
+};
     btnClose.onclick = () => bubble.remove();
 
-    // Allow Esc key to close the bubble
-    bubble.addEventListener("keydown", e => {
-      if (e.key === "Escape") bubble.remove();
-    });
+    // -----------------------------------------------------------------
+// Escape key handling – close the bubble, or exit full‑screen first
+// -----------------------------------------------------------------
+bubble.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    // If we are currently in full‑screen mode, restore the previous size
+    // instead of removing the bubble outright.
+    if (isFullScreen) {
+      // Re‑use the same toggle logic that the Full‑screen button uses.
+      // This will restore the saved geometry and reset the UI.
+      btnFull.click();
+    } else {
+      // Not in full‑screen → simply remove the bubble.
+      bubble.remove();
+    }
+  }
+});
 
     // -----------------------------------------------------------------
     // 8️⃣ Dragging (with clamping)
@@ -312,11 +294,9 @@
     });
 
     // -----------------------------------------------------------------
-    // 9️⃣ Hover‑reveal secondary buttons (font +/- , clear, theme)
+    // 9️⃣ Hover‑reveal secondary buttons
     // -----------------------------------------------------------------
     const secondaryButtons = [btnMinus, btnPlus, btnClear, btnTheme];
-
-    // Start hidden but still focusable via Tab
     secondaryButtons.forEach(b => (b.style.display = "none"));
 
     bubble.addEventListener("mouseenter", () => {
@@ -331,7 +311,7 @@
     // -----------------------------------------------------------------
     let resizing = false,
         resizeStartX, resizeStartY,
-        resizeStartW, resizeStartH;   // <-- renamed variables
+        resizeStartW, resizeStartH;
 
     resizer.addEventListener("mousedown", e => {
       resizing = true;
