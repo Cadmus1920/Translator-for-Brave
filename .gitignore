@@ -1,0 +1,16 @@
+# Node / npm artefacts (if you ever add a build step)
+node_modules/
+package-lock.json
+yarn.lock
+
+# OS‑specific files
+.DS_Store
+Thumbs.db
+
+# Build output folders (if you later use a bundler)
+dist/
+build/
+
+# Private keys / secrets (never commit these)
+*.key
+*.pem
