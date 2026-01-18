@@ -18,12 +18,17 @@ A lightweight Brave/Chrome extension that translates selected text into your bro
 
 ## Changelog
 
+### v1.1.0
+- Initial stable release. I skipped v1.0.0 cause I'm a rebel. 
+
 ### v1.2.0
 - Renamed extension to Translator for Brave
 - Added Clear button to translator bubble
 
-### v1.0.0
-- Initial stable release
+### v1.3.0
+- Added font size increase/decrease buttons
+- Prevented bubble from being dragged off-screen
+- Improved recovery from saved window positions
 
 ## Status
 Personal project. Stable baseline tagged as v1.0-stable.
