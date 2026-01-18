@@ -30,5 +30,11 @@ A lightweight Brave/Chrome extension that translates selected text into your bro
 - Prevented bubble from being dragged off-screen
 - Improved recovery from saved window positions
 
+### v1.4.0
+- Added edge snapping for the translator bubble
+- Improved drag and placement UX
+- Fixed MV3 context invalidation issues
+- Stabilized background messaging and settings persistence
+
 ## Status
 Personal project. Stable baseline tagged as v1.0-stable.
