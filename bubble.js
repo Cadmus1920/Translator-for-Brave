@@ -1,10 +1,17 @@
 (() => {
-  if (window.showTranslatorBubble) return;
+  // Always replace old versions (MV3-safe)
+delete window.showTranslatorBubble;
+  let extensionAlive = true;
+
+  window.addEventListener("unload", () => {
+    extensionAlive = false;
+  });
 
   const STORAGE_KEY = "translatorBubbleSettings";
 
   const SAFE_TOP = 40;      // prevents hiding under bookmarks bar
   const SAFE_MARGIN = 10;
+  const SNAP_DISTANCE = 24; // px
 
   const MIN_FONT = 12;
   const MAX_FONT = 20;
@@ -13,18 +20,73 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(value, max));
   }
+function snapToEdges(box) {
+  const leftPos = box.offsetLeft;
+  const topPos = box.offsetTop;
+  const width = box.offsetWidth;
+  const height = box.offsetHeight;
 
-  function loadSettings() {
-    return new Promise(resolve => {
-      chrome.storage.local.get([STORAGE_KEY], res => {
-        resolve(res[STORAGE_KEY] || {});
+  let left = leftPos;
+  let top = topPos;
+
+  // Left edge
+  if (leftPos < SNAP_DISTANCE) {
+    left = SAFE_MARGIN;
+  }
+
+  // Right edge
+  if (window.innerWidth - (leftPos + width) < SNAP_DISTANCE) {
+    left = window.innerWidth - width - SAFE_MARGIN;
+  }
+
+  // Top edge
+  if (topPos - SAFE_TOP < SNAP_DISTANCE) {
+    top = SAFE_TOP;
+  }
+
+  // Bottom edge
+  if (window.innerHeight - (topPos + height) < SNAP_DISTANCE) {
+    top = window.innerHeight - height - SAFE_MARGIN;
+  }
+
+  box.style.left = left + "px";
+  box.style.top = top + "px";
+}
+
+
+function loadSettings() {
+  return new Promise(resolve => {
+    if (!extensionAlive) {
+      resolve({});
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({ type: "getSettings" }, res => {
+        resolve(res || {});
       });
-    });
-  }
+    } catch {
+      resolve({});
+    }
+  });
+}
 
-  function saveSettings(settings) {
-    chrome.storage.local.set({ [STORAGE_KEY]: settings });
+
+
+function saveSettings(settings) {
+  if (!extensionAlive) return;
+
+  try {
+    chrome.runtime.sendMessage(
+      { type: "saveSettings", data: settings },
+      () => {
+        // ignore lastError
+      }
+    );
+  } catch {
+    // ignore invalidation
   }
+}
 
   window.showTranslatorBubble = async (text) => {
     let box = document.getElementById("translator-bubble");
@@ -241,13 +303,17 @@ secondaryButtons.forEach(btn => {
       box.style.top = newTop + "px";
     });
 
-    document.addEventListener("mouseup", () => {
-      if (!drag) return;
-      drag = false;
-      settings.left = box.offsetLeft;
-      settings.top = box.offsetTop;
-      saveSettings(settings);
-    });
+document.addEventListener("mouseup", () => {
+  if (!drag) return;
+  drag = false;
+console.log("Drag ended, snapping");
+
+  snapToEdges(box);
+
+  settings.left = box.offsetLeft;
+  settings.top = box.offsetTop;
+  saveSettings(settings);
+});
 
 
 // Bubble hover behavior (reveal secondary buttons)

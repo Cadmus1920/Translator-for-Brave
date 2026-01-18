@@ -1,3 +1,23 @@
+const STORAGE_KEY = "translatorBubbleSettings";
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "getSettings") {
+    chrome.storage.local.get([STORAGE_KEY], res => {
+      sendResponse(res[STORAGE_KEY] || {});
+    });
+    return true; // IMPORTANT: keeps message channel open
+  }
+
+if (msg.type === "saveSettings") {
+  chrome.storage.local.set({ [STORAGE_KEY]: msg.data }, () => {
+    sendResponse(true);
+  });
+  return true;
+}
+});
+
+
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "translate-selection",
