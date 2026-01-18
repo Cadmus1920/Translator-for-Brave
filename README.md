@@ -16,5 +16,14 @@ A lightweight Brave/Chrome extension that translates selected text into your bro
 3. Click "Load unpacked"
 4. Select this folder
 
+## Changelog
+
+### v1.2.0
+- Renamed extension to Translator for Brave
+- Added Clear button to translator bubble
+
+### v1.0.0
+- Initial stable release
+
 ## Status
 Personal project. Stable baseline tagged as v1.0-stable.
