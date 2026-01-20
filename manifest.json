@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Translator for Brave",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "description": "Popup translator extension for Brave and Chromium browsers",
   "permissions": [
     "contextMenus",
