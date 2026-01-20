@@ -1,11 +1,22 @@
 // ui-utils.js (plain script – will be injected into the page)
-window.clamp = function(value, min, max) {
+
+// ------------------------------------------------------------------
+// Clamp a numeric value between a min and a max
+// ------------------------------------------------------------------
+window.clamp = function (value, min, max) {
   return Math.max(min, Math.min(value, max));
 };
 
-window.snapToEdges = function(elem, { safeMargin, safeTop, snapDistance }) {
-  const { offsetLeft: leftPos, offsetTop: topPos,
-          offsetWidth: width, offsetHeight: height } = elem;
+// ------------------------------------------------------------------
+// Snap the bubble to the nearest screen edge when it gets close
+// ------------------------------------------------------------------
+window.snapToEdges = function (elem, { safeMargin, safeTop, snapDistance }) {
+  const {
+    offsetLeft: leftPos,
+    offsetTop: topPos,
+    offsetWidth: width,
+    offsetHeight: height,
+  } = elem;
 
   let left = leftPos;
   let top = topPos;
@@ -22,19 +33,40 @@ window.snapToEdges = function(elem, { safeMargin, safeTop, snapDistance }) {
   return { left, top };
 };
 
-window.applyTheme = function(elem, theme) {
+// ------------------------------------------------------------------
+// Apply dark / light theme with WCAG‑AA+ contrast ratios
+// ------------------------------------------------------------------
+window.applyTheme = function (elem, theme) {
+  // Convert the incoming theme string to a boolean we can reuse
   const isDark = theme === "dark";
-  const bg = isDark ? "#0f1115" : "#f2f2f2";
-  const fg = isDark ? "#fff" : "#000";
-  const headerBg = isDark ? "#161a22" : "#e4e4e4";
-  const border = isDark ? "1px solid #333" : "1px solid #bbb";
 
-  Object.assign(elem.style, { background: bg, color: fg, border });
+  // Colours chosen to stay well above the 4.5:1 contrast threshold
+  const bg = isDark ? "#121418" : "#ffffff";   // background
+  const fg = isDark ? "#e0e0e0" : "#212121";   // foreground (text)
+  const headerBg = isDark ? "#1c212b" : "#eaeaea";
+  const border = isDark ? "1px solid #555" : "1px solid #888";
+
+  // Apply the calculated styles to the bubble element
+  Object.assign(elem.style, {
+    background: bg,
+    color: fg,
+    border,
+    // Custom CSS variables – useful if you ever want to reference them elsewhere
+    "--bubble-fg": fg,
+    "--bubble-bg": bg,
+  });
+
+  // Header gets its own background colour
   const header = elem.querySelector("#tb-header");
   if (header) header.style.background = headerBg;
+
+  // Return the values in case the caller wants to store them
   return { bg, fg, headerBg, border };
 };
 
-window.applyFontSize = function(contentEl, size) {
+// ------------------------------------------------------------------
+// Set the font size of the bubble’s content area
+// ------------------------------------------------------------------
+window.applyFontSize = function (contentEl, size) {
   contentEl.style.fontSize = `${size}px`;
 };

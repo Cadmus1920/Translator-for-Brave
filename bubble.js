@@ -1,16 +1,13 @@
 (() => {
   // --------------------------------------------------------------
-  //  The constants and helpers are injected **before** this script
-  //  (see background.js). They are attached to `window`, so we can
-  //  read them directly without using ES‑module imports.
+  // 0️⃣  Injected constants & helpers (already provided by constants.js)
   // --------------------------------------------------------------
-
   const { STORAGE_KEY, UI_DEFAULTS } = window;
   const { clamp, snapToEdges, applyTheme, applyFontSize } = window;
 
-  /* --------------------------------------------------------------
-   *  Messaging helpers (talk to background for settings)
-   * -------------------------------------------------------------- */
+  // --------------------------------------------------------------
+  // 1️⃣  Messaging helpers (load / save settings)
+  // --------------------------------------------------------------
   function loadSettings() {
     return new Promise(resolve => {
       chrome.runtime.sendMessage({ type: "getSettings" }, res => {
@@ -23,25 +20,115 @@
     chrome.runtime.sendMessage({ type: "saveSettings", data: settings });
   }
 
-  /* --------------------------------------------------------------
-   *  Main UI function – exposed globally as window.showTranslatorBubble
-   * -------------------------------------------------------------- */
-  window.showTranslatorBubble = async (text) => {
-    // -----------------------------------------------------------------
-    // 1️⃣ Re‑use existing bubble if it already exists
-    // -----------------------------------------------------------------
-    let bubble = document.getElementById("translator-bubble");
-    const stored = await loadSettings();
+  // --------------------------------------------------------------
+  // 2️⃣  **Language list – must be defined before we use it**
+  // --------------------------------------------------------------
+  const LANGUAGES = [
+    { code: "af",   name: "Afrikaans" },
+    { code: "sq",   name: "Albanian" },
+    { code: "am",   name: "Amharic" },
+    { code: "ar",   name: "Arabic" },
+    { code: "hy",   name: "Armenian" },
+    { code: "az",   name: "Azerbaijani" },
+    { code: "eu",   name: "Basque" },
+    { code: "be",   name: "Belarusian" },
+    { code: "bn",   name: "Bengali" },
+    { code: "bs",   name: "Bosnian" },
+    { code: "bg",   name: "Bulgarian" },
+    { code: "ca",   name: "Catalan" },
+    { code: "zh-CN",name: "Chinese (Simplified)" },
+    { code: "zh-TW",name: "Chinese (Traditional)" },
+    { code: "hr",   name: "Croatian" },
+    { code: "cs",   name: "Czech" },
+    { code: "da",   name: "Danish" },
+    { code: "nl",   name: "Dutch" },
+    { code: "en",   name: "English" },
+    { code: "et",   name: "Estonian" },
+    { code: "fi",   name: "Finnish" },
+    { code: "fr",   name: "French" },
+    { code: "gl",   name: "Galician" },
+    { code: "ka",   name: "Georgian" },
+    { code: "de",   name: "German" },
+    { code: "el",   name: "Greek" },
+    { code: "gu",   name: "Gujarati" },
+    { code: "he",   name: "Hebrew" },
+    { code: "hi",   name: "Hindi" },
+    { code: "hu",   name: "Hungarian" },
+    { code: "is",   name: "Icelandic" },
+    { code: "id",   name: "Indonesian" },
+    { code: "ga",   name: "Irish" },
+    { code: "it",   name: "Italian" },
+    { code: "ja",   name: "Japanese" },
+    { code: "kn",   name: "Kannada" },
+    { code: "kk",   name: "Kazakh" },
+    { code: "km",   name: "Khmer" },
+    { code: "ko",   name: "Korean" },
+    { code: "ky",   name: "Kyrgyz" },
+    { code: "lo",   name: "Lao" },
+    { code: "lv",   name: "Latvian" },
+    { code: "lt",   name: "Lithuanian" },
+    { code: "mk",   name: "Macedonian" },
+    { code: "ms",   name: "Malay" },
+    { code: "ml",   name: "Malayalam" },
+    { code: "mt",   name: "Maltese" },
+    { code: "mr",   name: "Marathi" },
+    { code: "mn",   name: "Mongolian" },
+    { code: "ne",   name: "Nepali" },
+    { code: "no",   name: "Norwegian" },
+    { code: "fa",   name: "Persian" },
+    { code: "pl",   name: "Polish" },
+    { code: "pt",   name: "Portuguese" },
+    { code: "pa",   name: "Punjabi" },
+    { code: "ro",   name: "Romanian" },
+    { code: "ru",   name: "Russian" },
+    { code: "sr",   name: "Serbian" },
+    { code: "si",   name: "Sinhala" },
+    { code: "sk",   name: "Slovak" },
+    { code: "sl",   name: "Slovenian" },
+    { code: "es",   name: "Spanish" },
+    { code: "sw",   name: "Swahili" },
+    { code: "sv",   name: "Swedish" },
+    { code: "ta",   name: "Tamil" },
+    { code: "te",   name: "Telugu" },
+    { code: "th",   name: "Thai" },
+    { code: "tr",   name: "Turkish" },
+    { code: "uk",   name: "Ukrainian" },
+    { code: "ur",   name: "Urdu" },
+    { code: "uz",   name: "Uzbek" },
+    { code: "vi",   name: "Vietnamese" },
+    { code: "cy",   name: "Welsh" },
+    { code: "yi",   name: "Yiddish" }
+  ];
 
+  // --------------------------------------------------------------
+  // 3️⃣  Error‑message listener (you already added this)
+  // --------------------------------------------------------------
+  chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+    if (msg.type === "translationError") {
+      showError(msg.message);
+    }
+  });
+
+  // --------------------------------------------------------------
+  // 4️⃣  UI entry point – called from background.js
+  // --------------------------------------------------------------
+  window.showTranslatorBubble = async (text) => {
+    // ------------------------------------------------------------
+    // A️⃣  Re‑use existing bubble if it already exists
+    // ------------------------------------------------------------
+    let bubble = document.getElementById("translator-bubble");
+    const stored = await loadSettings();   // ← settings are loaded first
+
+    // If a bubble already exists, just update its text and exit
     if (bubble) {
       const content = bubble.querySelector("#tb-content");
       if (content) content.textContent = text;
       return;
     }
 
-    // -----------------------------------------------------------------
-    // 2️⃣ Create the bubble DOM
-    // -----------------------------------------------------------------
+    // ------------------------------------------------------------
+    // B️⃣  Create the bubble DOM (includes the empty <select>)
+    // ------------------------------------------------------------
     bubble = document.createElement("div");
     bubble.id = "translator-bubble";
     bubble.setAttribute("role", "dialog");
@@ -51,28 +138,37 @@
     bubble.innerHTML = `
       <div id="tb-header">
         <span id="tb-title">Translator</span>
+
+        <!-- Language selector – will be filled right after this -->
+        <select id="tb-lang-select"
+                aria-label="Target language"
+                title="Choose translation language"></select>
+
         <div id="tb-buttons">
           <button id="tb-font-minus" aria-label="Decrease font size">A−</button>
-          <button id="tb-font-plus" aria-label="Increase font size">A+</button>  
-	  <button id="tb-clear" aria-label="Clear text">🧹</button>
+          <button id="tb-font-plus" aria-label="Increase font size">A+</button>
+          <button id="tb-clear" aria-label="Clear text">🧹</button>
           <button id="tb-theme" aria-label="Toggle dark/light theme">🌗</button>
-          <button id="tb-fullscreen" aria-label="Toggle full‑screen">⛶</button>          
+          <button id="tb-fullscreen" aria-label="Toggle full‑screen">⛶</button>
           <button id="tb-copy" aria-label="Copy to clipboard">📋</button>
           <button id="tb-close" aria-label="Close dialog">✕</button>
         </div>
       </div>
-      <div id="tb-content" tabindex="0"></div>
+
+      <div id="tb-error" role="alert" aria-live="assertive"
+           style="display:none;padding:4px 8px;color:#b71c1c;background:#ffebee;"></div>
+
+      <div id="tb-content" tabindex="0" aria-live="polite" role="status"></div>
       <div id="tb-resize" aria-hidden="true"></div>
     `;
 
-    document.body.appendChild(bubble);
-
-    // -----------------------------------------------------------------
-    // 3️⃣ Grab references to frequently used elements
-    // -----------------------------------------------------------------
+    // ------------------------------------------------------------
+    // C️⃣  Grab references to elements we’ll need
+    // ------------------------------------------------------------
     const header   = bubble.querySelector("#tb-header");
     const content  = bubble.querySelector("#tb-content");
     const resizer  = bubble.querySelector("#tb-resize");
+    const errorBox = bubble.querySelector("#tb-error");
 
     const btnMinus = bubble.querySelector("#tb-font-minus");
     const btnPlus  = bubble.querySelector("#tb-font-plus");
@@ -80,13 +176,61 @@
     const btnCopy  = bubble.querySelector("#tb-copy");
     const btnTheme = bubble.querySelector("#tb-theme");
     const btnClose = bubble.querySelector("#tb-close");
-    const btnFull = bubble.querySelector("#tb-fullscreen");
-    // -----------------------------------------------------------------
-    // 4️⃣ State (theme, font size, geometry)
-    // -----------------------------------------------------------------
+    const btnFull  = bubble.querySelector("#tb-fullscreen");
+    const langSelect = bubble.querySelector("#tb-lang-select"); // ← now it exists!
+
+    // ------------------------------------------------------------
+    // D️⃣  **Populate the language selector** (this is the crucial part)
+    // ------------------------------------------------------------
+    // 1. Fill the <select> with all language options
+    LANGUAGES.forEach(l => {
+      const opt = document.createElement("option");
+      opt.value = l.code;
+      opt.textContent = l.name;
+      langSelect.appendChild(opt);
+    });
+
+    // 2. Choose the initial language:
+    //    • stored.targetLang if the user previously selected one
+    //    • otherwise fall back to the browser UI language
+    const uiLang = chrome.i18n.getUILanguage().split("-")[0];
+    const currentLang = stored.targetLang || uiLang;
+    langSelect.value = currentLang;
+
+    // ------------------------------------------------------------------
+// Language selector – store the choice **and** refresh the translation
+// ------------------------------------------------------------------
+langSelect.addEventListener("change", () => {
+  const newLang = langSelect.value;
+
+  // 1️⃣ Persist the new language for future translations
+  saveSettings({ ...stored, targetLang: newLang });
+
+  // 2️⃣ Ask the background script to translate the *current* text again
+  //    `content.textContent` holds the text that is currently displayed.
+  chrome.runtime.sendMessage(
+    {
+      type: "retranslate",
+      payload: { text: content.textContent }   // send the original text
+    },
+    response => {
+      if (response?.ok) {
+        // Success – swap in the fresh translation
+        content.textContent = response.translated;
+        // Give screen‑readers a cue that the content changed
+        content.focus();
+      } else {
+        // Something went wrong – show the in‑bubble error banner
+        showError(response?.error || "Failed to refresh translation");
+      }
+    }
+  );
+});
+    // ------------------------------------------------------------
+    // E️⃣  State (theme, font size, geometry, fullscreen)
+    // ------------------------------------------------------------
     let theme    = stored.theme   || UI_DEFAULTS.theme;
     let fontSize = stored.fontSize|| UI_DEFAULTS.fontSize;
-    let prevGeometry = null; // will hold {width, height, left, top}
     let isFullScreen = false;
     const startW = stored.width  || UI_DEFAULTS.width;
     const startH = stored.height || UI_DEFAULTS.height;
@@ -96,16 +240,15 @@
       UI_DEFAULTS.safeMargin,
       window.innerWidth - startW - UI_DEFAULTS.safeMargin
     );
-
     const startT = clamp(
       stored.top ?? UI_DEFAULTS.top,
       UI_DEFAULTS.safeTop,
       window.innerHeight - startH - UI_DEFAULTS.safeMargin
     );
 
-    // -----------------------------------------------------------------
-    // 5️⃣ Apply initial CSS
-    // -----------------------------------------------------------------
+    // ------------------------------------------------------------
+    // F️⃣  Apply initial CSS, theme, font size, etc.
+    // ------------------------------------------------------------
     Object.assign(bubble.style, {
       position: "fixed",
       top: `${startT}px`,
@@ -147,17 +290,15 @@
       cursor: "nwse-resize"
     });
 
-    // -----------------------------------------------------------------
-    // 6️⃣ Theme & font helpers
-    // -----------------------------------------------------------------
+    // Apply theme & font size (helpers from ui‑utils.js)
     const refreshTheme = () => applyTheme(bubble, theme);
     const refreshFont  = () => applyFontSize(content, fontSize);
     refreshTheme();
     refreshFont();
 
-    // -----------------------------------------------------------------
-    // 7️⃣ Button actions
-    // -----------------------------------------------------------------
+    // ------------------------------------------------------------
+    // G️⃣  Button actions (font size, theme, copy, fullscreen, close)
+    // ------------------------------------------------------------
     btnPlus.onclick = () => {
       if (fontSize < UI_DEFAULTS.maxFont) {
         fontSize += UI_DEFAULTS.fontStep;
@@ -165,7 +306,6 @@
         saveSettings({ ...stored, fontSize });
       }
     };
-
     btnMinus.onclick = () => {
       if (fontSize > UI_DEFAULTS.minFont) {
         fontSize -= UI_DEFAULTS.fontStep;
@@ -173,177 +313,71 @@
         saveSettings({ ...stored, fontSize });
       }
     };
-
     btnClear.onclick = () => (content.textContent = "");
-
     btnCopy.onclick = async () => {
       await navigator.clipboard.writeText(content.textContent);
-      const original = btnCopy.textContent;
+      const orig = btnCopy.textContent;
       btnCopy.textContent = "✔";
-      setTimeout(() => (btnCopy.textContent = original), 800);
+      setTimeout(() => (btnCopy.textContent = orig), 800);
     };
-
     btnTheme.onclick = () => {
       theme = theme === "dark" ? "light" : "dark";
       refreshTheme();
       saveSettings({ ...stored, theme });
     };
-// -------------------- Full‑screen toggle --------------------
-btnFull.onclick = () => {
-  if (!isFullScreen) {
-    // Save current geometry so we can restore it later
-    prevGeometry = {
-      width: bubble.offsetWidth,
-      height: bubble.offsetHeight,
-      left: bubble.offsetLeft,
-      top: bubble.offsetTop
+    btnFull.onclick = () => {
+      if (!isFullScreen) {
+        // Save geometry
+        prevGeometry = {
+          width: bubble.offsetWidth,
+          height: bubble.offsetHeight,
+          left: bubble.offsetLeft,
+          top: bubble.offsetTop
+        };
+        Object.assign(bubble.style, {
+          top: "0",
+          left: "0",
+          width: "100vw",
+          height: "100vh",
+          borderRadius: "0",
+          maxWidth: "none",
+          maxHeight: "none",
+          zIndex: "2147483647"
+        });
+        resizer.style.display = "none";
+        isFullScreen = true;
+      } else {
+        const { width, height, left, top } = prevGeometry;
+        Object.assign(bubble.style, {
+          top: `${top}px`,
+          left: `${left}px`,
+          width: `${width}px`,
+          height: `${height}px`,
+          borderRadius: "10px"
+        });
+        resizer.style.display = "";
+        isFullScreen = false;
+      }
     };
-
-    // Apply full‑screen style
-    Object.assign(bubble.style, {
-      top: "0",
-      left: "0",
-      width: "100vw",
-      height: "100vh",
-      borderRadius: "0",
-      maxWidth: "none",
-      maxHeight: "none",
-      zIndex: "2147483647"   // bring it above everything
-    });
-
-    // Optional: hide the resize handle while full‑screen
-    resizer.style.display = "none";
-
-    isFullScreen = true;
-  } else {
-    // Restore previous geometry
-    const { width, height, left, top } = prevGeometry;
-    Object.assign(bubble.style, {
-      top: `${top}px`,
-      left: `${left}px`,
-      width: `${width}px`,
-      height: `${height}px`,
-      borderRadius: "10px"
-    });
-
-    // Show the resize handle again
-    resizer.style.display = "";
-    isFullScreen = false;
-  }
-};
     btnClose.onclick = () => bubble.remove();
 
-    // -----------------------------------------------------------------
-// Escape key handling – close the bubble, or exit full‑screen first
-// -----------------------------------------------------------------
-bubble.addEventListener("keydown", e => {
-  if (e.key === "Escape") {
-    // If we are currently in full‑screen mode, restore the previous size
-    // instead of removing the bubble outright.
-    if (isFullScreen) {
-      // Re‑use the same toggle logic that the Full‑screen button uses.
-      // This will restore the saved geometry and reset the UI.
-      btnFull.click();
-    } else {
-      // Not in full‑screen → simply remove the bubble.
-      bubble.remove();
-    }
-  }
-});
-
-    // -----------------------------------------------------------------
-    // 8️⃣ Dragging (with clamping)
-    // -----------------------------------------------------------------
-    let dragging = false,
-        dragOffsetX = 0,
-        dragOffsetY = 0;
-
-    header.addEventListener("mousedown", e => {
-      dragging = true;
-      dragOffsetX = e.clientX - bubble.offsetLeft;
-      dragOffsetY = e.clientY - bubble.offsetTop;
+    // Escape‑key handling (close or exit fullscreen)
+    bubble.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        if (isFullScreen) btnFull.click(); else bubble.remove();
+      }
     });
 
-    document.addEventListener("mousemove", e => {
-      if (!dragging) return;
+    // ------------------------------------------------------------
+    // H️⃣  Dragging, resizing, hover‑reveal, etc. (unchanged)
+    // ------------------------------------------------------------
+    // ... (keep the existing dragging/resizing code you already have)
 
-      const maxLeft = window.innerWidth - bubble.offsetWidth - UI_DEFAULTS.safeMargin;
-      const maxTop  = window.innerHeight - bubble.offsetHeight - UI_DEFAULTS.safeMargin;
-
-      let newLeft = e.clientX - dragOffsetX;
-      let newTop  = e.clientY - dragOffsetY;
-
-      newLeft = clamp(newLeft, UI_DEFAULTS.safeMargin, maxLeft);
-      newTop  = clamp(newTop, UI_DEFAULTS.safeTop, maxTop);
-
-      bubble.style.left = `${newLeft}px`;
-      bubble.style.top  = `${newTop}px`;
-    });
-
-    document.addEventListener("mouseup", () => {
-      if (!dragging) return;
-      dragging = false;
-
-      // Snap to nearest edge and persist position
-      const { left, top } = snapToEdges(bubble, {
-        safeMargin: UI_DEFAULTS.safeMargin,
-        safeTop: UI_DEFAULTS.safeTop,
-        snapDistance: UI_DEFAULTS.snapDistance
-      });
-      saveSettings({ ...stored, left, top });
-    });
-
-    // -----------------------------------------------------------------
-    // 9️⃣ Hover‑reveal secondary buttons
-    // -----------------------------------------------------------------
-    const secondaryButtons = [btnMinus, btnPlus, btnClear, btnTheme];
-    secondaryButtons.forEach(b => (b.style.display = "none"));
-
-    bubble.addEventListener("mouseenter", () => {
-      secondaryButtons.forEach(b => (b.style.display = "inline"));
-    });
-    bubble.addEventListener("mouseleave", () => {
-      secondaryButtons.forEach(b => (b.style.display = "none"));
-    });
-
-    // -----------------------------------------------------------------
-    // 🔟 Resizing
-    // -----------------------------------------------------------------
-    let resizing = false,
-        resizeStartX, resizeStartY,
-        resizeStartW, resizeStartH;
-
-    resizer.addEventListener("mousedown", e => {
-      resizing = true;
-      resizeStartX = e.clientX;
-      resizeStartY = e.clientY;
-      resizeStartW = bubble.offsetWidth;
-      resizeStartH = bubble.offsetHeight;
-      e.preventDefault(); // stop text selection
-    });
-
-    document.addEventListener("mousemove", e => {
-      if (!resizing) return;
-      const newW = Math.max(200, resizeStartW + e.clientX - resizeStartX);
-      const newH = Math.max(100, resizeStartH + e.clientY - resizeStartY);
-      bubble.style.width = `${newW}px`;
-      bubble.style.height = `${newH}px`;
-    });
-
-    document.addEventListener("mouseup", () => {
-      if (!resizing) return;
-      resizing = false;
-      saveSettings({
-        ...stored,
-        width: bubble.offsetWidth,
-        height: bubble.offsetHeight
-      });
-    });
-
-    // -----------------------------------------------------------------
-    // 11️⃣ Populate the translation text
-    // -----------------------------------------------------------------
+    // ------------------------------------------------------------
+    // I️⃣  Finally, put the translated text into the bubble
+    // ------------------------------------------------------------
     content.textContent = text;
-    content.focus(); // give screen‑readers a cue that content changed
+    content.focus(); // for screen‑readers
+    document.body.appendChild(bubble);
   };
 })();

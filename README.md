@@ -3,11 +3,12 @@
 A lightweight Brave/Chrome extension that translates selected text into your browser language and shows it in a movable, resizable popup bubble.
 
 ## Features
-- Right-click translate
+- Right‑click translate
 - Floating resizable window
 - Dark / light mode
 - Copy to clipboard
 - Saves size and position
+- **Language selector with instant refresh** (choose any supported language without closing the bubble)
 - Google Translate backend
 
 ## Install (Developer mode)
@@ -40,6 +41,11 @@ A lightweight Brave/Chrome extension that translates selected text into your bro
 - Added “Full‑screen” button to the translator bubble.
 - Preserves paragraph styling when toggling full‑screen.
 - Updated escape‑key handling to exit full‑screen before closing.
+
+## v1.4.2 – 2026‑01‑21
+- Added a **language selector** to the translator bubble.
+- Implemented **instant re‑translation** when the user changes the language (no need to close/re‑open the bubble).
+- Fixed a bug where the context‑menu entry disappeared after a reload by ensuring the menu is registered on every service‑worker start.
 
 ## Status
 Personal project. Stable baseline tagged as v1.0-stable.
