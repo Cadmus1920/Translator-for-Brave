@@ -8,32 +8,98 @@
 const STORAGE_KEY = "translatorBubbleSettings";
 
 /* -----------------------------------------------------------------
- *  Message handlers – get / save settings / re‑translate
+ *  Scripts to inject (in order)
  * ----------------------------------------------------------------- */
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  // --------------------------------------------------------------
-  // 1️⃣ Get stored settings (used by the UI)
-  // --------------------------------------------------------------
-  if (msg.type === "getSettings") {
-    chrome.storage.local.get([STORAGE_KEY], (res) => {
-      sendResponse(res[STORAGE_KEY] || {});
-    });
-    return true; // keep the channel open for async response
+const UI_SCRIPTS = [
+  "constants.js",
+  "languages.js",
+  "validators.js",
+  "ui-utils.js",
+  "drag-handler.js",
+  "resize-handler.js",
+  "bubble-ui.js"
+];
+
+/* -----------------------------------------------------------------
+ *  Default settings (for validation in service worker)
+ * ----------------------------------------------------------------- */
+const DEFAULT_SETTINGS = {
+  theme: "dark",
+  fontSize: 14,
+  width: 320,
+  height: 180,
+  left: 80,
+  top: 80,
+  minFont: 12,
+  maxFont: 20
+};
+
+/* -----------------------------------------------------------------
+ *  Settings validation (server-side mirror of validators.js)
+ * ----------------------------------------------------------------- */
+function validateStoredSettings(raw) {
+  if (!raw || typeof raw !== "object") {
+    return {};
   }
 
-  // --------------------------------------------------------------
-  // 2️⃣ Save settings (called by the bubble UI)
-  // --------------------------------------------------------------
+  const result = {};
+
+  if (raw.theme === "dark" || raw.theme === "light") {
+    result.theme = raw.theme;
+  }
+
+  if (typeof raw.fontSize === "number" &&
+      raw.fontSize >= DEFAULT_SETTINGS.minFont &&
+      raw.fontSize <= DEFAULT_SETTINGS.maxFont) {
+    result.fontSize = raw.fontSize;
+  }
+
+  if (typeof raw.width === "number" && raw.width >= 200) {
+    result.width = raw.width;
+  }
+
+  if (typeof raw.height === "number" && raw.height >= 120) {
+    result.height = raw.height;
+  }
+
+  if (typeof raw.left === "number" && raw.left >= 0) {
+    result.left = raw.left;
+  }
+
+  if (typeof raw.top === "number" && raw.top >= 0) {
+    result.top = raw.top;
+  }
+
+  if (typeof raw.targetLang === "string" && raw.targetLang.length > 0) {
+    result.targetLang = raw.targetLang;
+  }
+
+  return result;
+}
+
+/* -----------------------------------------------------------------
+ *  Message handlers – get / save settings / re-translate
+ * ----------------------------------------------------------------- */
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Get stored settings (used by the UI)
+  if (msg.type === "getSettings") {
+    chrome.storage.local.get([STORAGE_KEY], (res) => {
+      const validated = validateStoredSettings(res[STORAGE_KEY] || {});
+      sendResponse(validated);
+    });
+    return true;
+  }
+
+  // Save settings (called by the bubble UI)
   if (msg.type === "saveSettings") {
-    chrome.storage.local.set({ [STORAGE_KEY]: msg.data }, () => {
+    const validated = validateStoredSettings(msg.data);
+    chrome.storage.local.set({ [STORAGE_KEY]: validated }, () => {
       sendResponse(true);
     });
     return true;
   }
 
-  // --------------------------------------------------------------
-  // 3️⃣ New – Re‑translate the currently displayed text
-  // --------------------------------------------------------------
+  // Re-translate the currently displayed text
   if (msg.type === "retranslate") {
     const raw = msg.payload?.text?.trim();
 
@@ -42,31 +108,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return true;
     }
 
-    // Load stored settings (may contain a user‑chosen targetLang)
     chrome.storage.local.get([STORAGE_KEY], (result) => {
-      const stored = result[STORAGE_KEY] || {};
+      const stored = validateStoredSettings(result[STORAGE_KEY] || {});
       const uiLang = chrome.i18n.getUILanguage().split("-")[0];
       const targetLang = stored.targetLang || uiLang;
 
       translateText(raw, targetLang)
         .then(translated => sendResponse({ ok: true, translated }))
         .catch(err => {
-          console.error("Re‑translate failed:", err);
+          console.error("Re-translate failed:", err);
           sendResponse({ ok: false, error: err.message });
         });
     });
 
-    return true; // async response
+    return true;
   }
-
-  // If we reach here, the message type is unknown – ignore it.
 });
 
 /* -----------------------------------------------------------------
- *  Context‑menu registration – runs on every load
+ *  Context-menu registration – runs on every load
  * ----------------------------------------------------------------- */
 function registerContextMenu() {
-  // Remove any stale entries first (prevents duplicate‑id errors)
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "translate-selection",
@@ -76,13 +138,10 @@ function registerContextMenu() {
   });
 }
 
-// Register when the extension is installed or updated
 chrome.runtime.onInstalled.addListener(() => {
   registerContextMenu();
 });
 
-// Also register immediately when the service worker starts
-// (covers manual reloads during development)
 registerContextMenu();
 
 /* -----------------------------------------------------------------
@@ -102,12 +161,28 @@ async function translateText(text, targetLang) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
   const data = await response.json();
-  // data[0] is an array of translation fragments
   return data[0].map(item => item[0]).join("");
 }
 
 /* -----------------------------------------------------------------
- *  Context‑menu click handler – orchestrates the whole flow
+ *  Inject UI scripts with error handling
+ * ----------------------------------------------------------------- */
+async function injectUIScripts(tabId) {
+  for (const file of UI_SCRIPTS) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: [file]
+      });
+    } catch (err) {
+      console.error(`Failed to inject ${file}:`, err);
+      throw new Error(`Script injection failed: ${file}`);
+    }
+  }
+}
+
+/* -----------------------------------------------------------------
+ *  Context-menu click handler – orchestrates the whole flow
  * ----------------------------------------------------------------- */
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "translate-selection") return;
@@ -115,46 +190,24 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const raw = info.selectionText?.trim();
   if (!raw) return;
 
-  // --------------------------------------------------------------
-  // Load stored settings (may contain a user‑chosen targetLang)
-  // --------------------------------------------------------------
+  // Load stored settings
   const stored = await new Promise(resolve => {
     chrome.storage.local.get([STORAGE_KEY], result => {
-      resolve(result[STORAGE_KEY] || {});
+      resolve(validateStoredSettings(result[STORAGE_KEY] || {}));
     });
   });
 
-  // --------------------------------------------------------------
-  // Determine language: stored choice overrides UI language
-  // --------------------------------------------------------------
   const uiLang = chrome.i18n.getUILanguage().split("-")[0];
   const targetLang = stored.targetLang || uiLang;
 
   try {
-    // ------------------------------------------------------------
-    // 1️⃣ Perform the translation
-    // ------------------------------------------------------------
+    // Perform the translation
     const translated = await translateText(raw, targetLang);
 
-    // ------------------------------------------------------------
-    // 2️⃣ Inject UI scripts into the active tab
-    // ------------------------------------------------------------
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["constants.js"]
-    });
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["ui-utils.js"]
-    });
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["bubble.js"]
-    });
+    // Inject UI scripts into the active tab
+    await injectUIScripts(tab.id);
 
-    // ------------------------------------------------------------
-    // 3️⃣ Show the bubble with the translation
-    // ------------------------------------------------------------
+    // Show the bubble with the translation
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: t => window.showTranslatorBubble(t),
@@ -163,16 +216,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   } catch (err) {
     console.error("Translation failed:", err);
 
-    // ------------------------------------------------------------
-    // 4️⃣ Send an in‑bubble error message (bubble.js listens for this)
-    // ------------------------------------------------------------
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs.length) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: "translationError",
-          message: "Could not translate the selected text. Please try again."
-        });
-      }
-    });
+    // Try to show error in bubble if scripts are injected
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: "translationError",
+        message: "Could not translate the selected text. Please try again."
+      });
+    } catch {
+      // If we can't send message, show notification instead
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icon48.png",
+        title: "Translation Failed",
+        message: "Could not translate the selected text. Please try again."
+      });
+    }
   }
 });

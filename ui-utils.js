@@ -65,8 +65,43 @@ window.applyTheme = function (elem, theme) {
 };
 
 // ------------------------------------------------------------------
-// Set the font size of the bubble’s content area
+// Set the font size of the bubble's content area
 // ------------------------------------------------------------------
 window.applyFontSize = function (contentEl, size) {
   contentEl.style.fontSize = `${size}px`;
+};
+
+// ------------------------------------------------------------------
+// Display an error message in the bubble's error element
+// ------------------------------------------------------------------
+window.showError = function (message, duration = 5000) {
+  const bubble = document.getElementById(window.BUBBLE_ID || "translator-bubble");
+  if (!bubble) return;
+
+  const errorBox = bubble.querySelector("#tb-error");
+  if (!errorBox) return;
+
+  errorBox.textContent = message;
+  errorBox.style.display = "block";
+
+  if (duration > 0) {
+    setTimeout(() => {
+      errorBox.style.display = "none";
+      errorBox.textContent = "";
+    }, duration);
+  }
+};
+
+// ------------------------------------------------------------------
+// Hide any currently displayed error
+// ------------------------------------------------------------------
+window.hideError = function () {
+  const bubble = document.getElementById(window.BUBBLE_ID || "translator-bubble");
+  if (!bubble) return;
+
+  const errorBox = bubble.querySelector("#tb-error");
+  if (errorBox) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+  }
 };
